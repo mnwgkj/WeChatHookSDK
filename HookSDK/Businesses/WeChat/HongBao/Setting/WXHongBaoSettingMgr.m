@@ -540,7 +540,22 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
     
     WXHongBaoSettingInfoItem *item = [self settingInfoByKey:KWXHongBaoSettingKeyAutoOpenDelay];
     
-    return [item.text integerValue] * 0.001;
+    float baseDelay = [item.text integerValue] * 0.001;
+    
+    // 在基础延迟基础上增加随机化，避免被检测
+    if ( baseDelay > 0 )
+    {
+        // 添加 ±30% 的随机波动
+        float randomFactor = 0.7 + (arc4random_uniform(60) / 100.0); // 0.7-1.3之间
+        baseDelay = baseDelay * randomFactor;
+    }
+    else
+    {
+        // 即使设置为0，也添加少量随机延迟
+        baseDelay = (arc4random_uniform(50) + 10) * 0.001; // 10-60毫秒随机延迟
+    }
+    
+    return baseDelay;
 }
 
 - (float)queryDelay
@@ -552,7 +567,22 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
     
     WXHongBaoSettingInfoItem *item = [self settingInfoByKey:KWXHongBaoSettingKeyQueryDelay];
     
-    return [item.text integerValue] * 0.001;
+    float baseDelay = [item.text integerValue] * 0.001;
+    
+    // 在基础延迟基础上增加随机化，避免被检测
+    if ( baseDelay > 0 )
+    {
+        // 添加 ±20% 的随机波动
+        float randomFactor = 0.8 + (arc4random_uniform(40) / 100.0); // 0.8-1.2之间
+        baseDelay = baseDelay * randomFactor;
+    }
+    else
+    {
+        // 最小延迟也要有随机性
+        baseDelay = (arc4random_uniform(30) + 20) * 0.001; // 20-50毫秒随机延迟
+    }
+    
+    return baseDelay;
 }
 
 - (BOOL)isGroupNameVaild:(NSString *)groupName

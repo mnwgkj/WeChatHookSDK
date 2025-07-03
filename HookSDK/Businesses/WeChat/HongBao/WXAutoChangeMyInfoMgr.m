@@ -143,28 +143,21 @@ typedef void(^EditAction)(UIView *view);
 - (NSString *)randomNickName
 {
     NSArray *list = [self defaultNickNameList];
-    static int i = -1;
-    i ++;
-    if ( i > list.count - 1 )
-    {
-        i = -1;
-    }
     
-    return [list objectAtIndex:i];
+    // 使用真正的随机选择，而不是循环
+    NSUInteger randomIndex = arc4random_uniform((uint32_t)list.count);
+    
+    return [list objectAtIndex:randomIndex];
 }
 
 - (NSString *)randomHeadImageURL
 {
     NSArray *list = [self defalutHeadImageURLList];
     
-    static int i = -1;
-    i ++;
-    if ( i > list.count - 1 )
-    {
-        i = -1;
-    }
+    // 使用真正的随机选择，而不是循环
+    NSUInteger randomIndex = arc4random_uniform((uint32_t)list.count);
     
-    return [list objectAtIndex:i];
+    return [list objectAtIndex:randomIndex];
 }
 
 - (NSArray *)defaultNickNameList
@@ -309,7 +302,9 @@ typedef void(^EditAction)(UIView *view);
     
     if ( [[WXHongBaoSettingMgr shareInstance] autoChangeInfo] )
     {
-        self.timer = [NSTimer scheduledTimerWithTimeInterval:10.0 target:self selector:@selector(onTimerTimeout:) userInfo:nil repeats:YES];
+        // 使用随机时间间隔，避免固定10秒被检测
+        NSTimeInterval randomInterval = 8.0 + (arc4random_uniform(8000) / 1000.0); // 8-16秒随机间隔
+        self.timer = [NSTimer scheduledTimerWithTimeInterval:randomInterval target:self selector:@selector(onTimerTimeout:) userInfo:nil repeats:NO];
     }
 }
 
@@ -325,6 +320,12 @@ typedef void(^EditAction)(UIView *view);
 - (void)onTimerTimeout:(id)sender
 {
     [self autoChangeMyInfo];
+    
+    // 定时器执行后重新启动，保持随机间隔
+    if ( [[WXHongBaoSettingMgr shareInstance] autoChangeInfo] )
+    {
+        [self start];
+    }
 }
 
 - (void)onWXHongBaoSettingUpdate

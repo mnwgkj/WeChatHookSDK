@@ -85,7 +85,11 @@
         [params setObject:sendId forKey:@"sendId"];
         [params setObject:fixNativeURL forKey:@"nativeUrl"];
         
-        [[WXHongBaoOpeartionMgr shareInstance] wxQueryRedEnvelopesDetailRequest:params];
+        // 添加随机延迟避免过于频繁的请求
+        NSTimeInterval randomDelay = (arc4random_uniform(200) + 50) * 0.001; // 50-250毫秒随机延迟
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(randomDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [[WXHongBaoOpeartionMgr shareInstance] wxQueryRedEnvelopesDetailRequest:params];
+        });
     };
     
     HKAsynTickoutTask* newTask = [[HKAsynTickoutTask alloc] init];

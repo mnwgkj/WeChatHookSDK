@@ -209,6 +209,7 @@
     
     if ( shouldReceiveRedEnvelop )
     {
+        NSString *timingId = responseDict[@"timingIdentifier"];
         mgrParams.timingIdentifier = timingId;
         
         //抢红包

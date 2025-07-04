@@ -61,24 +61,25 @@
 {
     if ( ![[WXHongBaoMessageListMgr shareInstance] isHongBaoMessage:wrap] )
     {
-        if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"不是红包消息"];
-        }
-        return;
+        return; // 极速模式：跳过日志
     }
     
-    BOOL canOpenBySetting = [self testHongBaoMessageCanAutoOpen:wrap log:YES];
-    if ( !canOpenBySetting )
+    // 极速验证 - 只检查关键条件
+    if ( ![[WXHongBaoSettingMgr shareInstance] autoOpen] || ![[WXHongBaoSettingMgr shareInstance] isEnable] )
     {
         return;
     }
     
     float openDelay = [[WXHongBaoSettingMgr shareInstance] openDelay];
     
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(openDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self openHongBaoByMessageWrap:wrap log:YES];
-    });
+    // 零延迟优化：openDelay为0时直接执行，避免dispatch开销
+    if (openDelay <= 0.001) { // 小于1ms视为零延迟
+        [self openHongBaoByMessageWrap:wrap log:NO];
+    } else {
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(openDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+            [self openHongBaoByMessageWrap:wrap log:NO];
+        });
+    }
 }
 
 - (void)openHongBaoByNativeURL:(NSString *)nativeURL usingCacheTimingId:(BOOL)usingCacheTimingId log:(BOOL)log
@@ -87,104 +88,77 @@
     
     NSString *sendId = [dic stringForKey:@"sendid"];
     NSString *timingId = nil;
-    CMessageWrap *wrap = [[WXHongBaoMessageListMgr shareInstance] hongBaoMessageBySendId:sendId];
+    CMessageWrap *wrap = nil;
     
     if ( usingCacheTimingId )
     {
-        timingId = [[WXHongBaoMessageListMgr shareInstance] timingIdOfName:sendId];;
-    }
-    
-    if ( timingId != nil )
-    {
-        WeChatRedEnvelopParam *mgrParams = [[WXHongBaoMessageListMgr shareInstance] hongBaoEnvelopParamWithMessage:wrap];
+        timingId = [[WXHongBaoMessageListMgr shareInstance] timingIdOfName:sendId];
         
-        mgrParams.timingIdentifier = timingId;
-        
-        HKTagNSLog(KWeChatHookSDKLog, @"使用极速抢包");
-        if ( log )
+        // 极速路径：如果有timingId，立即构建参数并执行
+        if ( timingId != nil )
         {
-            if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-            {
-                [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"使用极速抢包"];
+            // 预分配静态参数字典，避免重复创建
+            static NSMutableDictionary *fastParams = nil;
+            if (!fastParams) {
+                fastParams = [[NSMutableDictionary alloc] initWithCapacity:8];
             }
+            [fastParams removeAllObjects];
+            
+            // 直接构建参数，跳过WeChatRedEnvelopParam中间对象
+            fastParams[@"agreeDuty"] = @"0";
+            fastParams[@"inWay"] = @"0";
+            fastParams[@"msgType"] = @"1";
+            fastParams[@"nativeUrl"] = nativeURL;
+            fastParams[@"sendId"] = sendId;
+            fastParams[@"timingIdentifier"] = timingId;
+            
+            // 极速执行
+            [[WXHongBaoOpeartionMgr shareInstance] wxOpenRedEnvelopesRequest:fastParams];
+            return;
         }
-        
-        [[WXHongBaoOpeartionMgr shareInstance] wxOpenRedEnvelopesRequest:[mgrParams toParams]];
-    }
-    else
-    {
-        [self openHongBaoByMessageWrap:wrap log:log];
     }
     
+    // 降级到正常流程
+    wrap = [[WXHongBaoMessageListMgr shareInstance] hongBaoMessageBySendId:sendId];
+    [self openHongBaoByMessageWrap:wrap log:NO];
 }
 
 - (void)openHongBaoByMessageWrap:(CMessageWrap *)wrap log:(BOOL)log
 {
-    HKTagNSLog(KWeChatHookSDKLog, @"WXHongBaoOpeartionMgr::openHongBaoByMessageWrap");
-    
+    // 极速模式：跳过详细日志和验证
     if ( ![[WXHongBaoMessageListMgr shareInstance] isHongBaoMessage:wrap] )
     {
-        HKTagNSLog(KWeChatHookSDKLog,@"打开红包无效");
-        
-        if ( log )
-        {
-            if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-            {
-                [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"打开红包无效"];
-            }
-        }
-        
         return;
     }
     
-    // 红包
-    BOOL isRedEnvelopMessage = [wrap.m_nsContent rangeOfString:@"wxpay://"].location != NSNotFound;
+    // 预分配静态参数字典
+    static NSMutableDictionary *queryParams = nil;
+    if (!queryParams) {
+        queryParams = [[NSMutableDictionary alloc] initWithCapacity:6];
+    }
+    [queryParams removeAllObjects];
     
-    if (!isRedEnvelopMessage)
-    {
-        HKTagNSLog(KWeChatHookSDKLog,@"消息不是红包");
-        
-        if ( log )
-        {
-            if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-            {
-                [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"消息不是红包"];
-            }
-        }
-
-        return;
+    // 预缓存LogicMgr，避免重复获取
+    static WCRedEnvelopesLogicMgr *cachedLogicMgr = nil;
+    if (!cachedLogicMgr) {
+        cachedLogicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:[objc_getClass("WCRedEnvelopesLogicMgr") class]];
     }
     
-    /** 获取服务端验证参数 */
-    void (^queryRedEnvelopesReqeust)(NSDictionary *nativeUrlDict) = ^(NSDictionary *nativeUrlDict) {
-        NSMutableDictionary *params = [@{} mutableCopy];
-        params[@"agreeDuty"] = @"0";
-        params[@"channelId"] = [nativeUrlDict stringForKey:@"channelid"];
-        params[@"inWay"] = @"0";
-        params[@"msgType"] = [nativeUrlDict stringForKey:@"msgtype"];
-        params[@"nativeUrl"] = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];
-        params[@"sendId"] = [nativeUrlDict stringForKey:@"sendid"];
-        
-        WCRedEnvelopesLogicMgr *logicMgr = [[objc_getClass("MMServiceCenter") defaultCenter] getService:[objc_getClass("WCRedEnvelopesLogicMgr") class]];
-        [logicMgr ReceiverQueryRedEnvelopesRequest:params];
-    };
+    NSString *nativeUrl = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];
+    NSDictionary *nativeUrlDict = [[WXHongBaoMessageListMgr shareInstance] hongBaoParseNativeURL:nativeUrl];
     
-    {
-        NSString *nativeUrl = [[wrap m_oWCPayInfoItem] m_c2cNativeUrl];
-        NSDictionary *nativeUrlDict = [[WXHongBaoMessageListMgr shareInstance] hongBaoParseNativeURL:nativeUrl];
-        
-        if ( log )
-        {
-            if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-            {
-                [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"查询红包状态"];
-            }
-        }
-        
-        [[WXHongBaoMessageListMgr shareInstance] addAutoOpenHongBaoMesage:wrap];
-        
-        queryRedEnvelopesReqeust(nativeUrlDict);
-    }
+    // 快速构建参数，避免block和mutableCopy开销
+    queryParams[@"agreeDuty"] = @"0";
+    queryParams[@"channelId"] = [nativeUrlDict stringForKey:@"channelid"];
+    queryParams[@"inWay"] = @"0";
+    queryParams[@"msgType"] = [nativeUrlDict stringForKey:@"msgtype"];
+    queryParams[@"nativeUrl"] = nativeUrl;
+    queryParams[@"sendId"] = [nativeUrlDict stringForKey:@"sendid"];
+    
+    [[WXHongBaoMessageListMgr shareInstance] addAutoOpenHongBaoMesage:wrap];
+    
+    // 直接执行，避免block调用开销
+    [cachedLogicMgr ReceiverQueryRedEnvelopesRequest:queryParams];
 }
 
 - (BOOL)testHongBaoMessageCanAutoOpen:(CMessageWrap *)wrap log:(BOOL)log
@@ -217,72 +191,28 @@
 
 - (BOOL)testHongBaoMessageCanOpen:(CMessageWrap *)wrap authTitle:(BOOL)authTitle log:(BOOL)log
 {
-    HKTagNSLog(KWeChatHookSDKLog, @"WXHongBaoOpeartionMgr::testHongBaoMessageCanOpen");
+    // 极速验证：只检查关键条件，跳过日志和详细信息
+    WXHongBaoSettingMgr *settingMgr = [WXHongBaoSettingMgr shareInstance];
+    
+    // 快速检查基础条件
+    if ( ![settingMgr isAppAuthorized] || ![settingMgr isEnable] ) {
+        return NO;
+    }
+    
+    // 群名验证
     NSString *groupName = [[WXHongBaoMessageListMgr shareInstance] groupNameFromMessage:wrap];
-    NSString *title = [[WXHongBaoMessageListMgr shareInstance] hongBaoTitleWithMessage:wrap];
-    BOOL isAppAuthorized = [[WXHongBaoSettingMgr shareInstance] isAppAuthorized];
-    BOOL isEnable = [[WXHongBaoSettingMgr shareInstance] isEnable];
-    BOOL isGroupNameVaild = [[WXHongBaoSettingMgr shareInstance] isGroupNameVaild:groupName];
-    BOOL openOnlySendByMe = [[WXHongBaoSettingMgr shareInstance] openOnlySendByMe];
-    BOOL isSendByMe = [[WXHongBaoMessageListMgr shareInstance] isSendByMe:wrap];
-    
-    NSString *logString = [NSString stringWithFormat:@"groupName = %@ titleInfo: %@",groupName, title];
-    HKTagNSLog(KWeChatHookSDKLog, logString);
-    
-    logString = [NSString stringWithFormat:@"GetChatName = %@ ", [wrap GetChatName]];
-    HKTagNSLog(KWeChatHookSDKLog, logString);
-    
-    if ( !isAppAuthorized )
-    {
-        HKTagNSLog(KWeChatHookSDKLog, @"软件未授权");
-        if ( log )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"软件未授权"];
-        }
-        
+    if ( ![settingMgr isGroupNameVaild:groupName] ) {
         return NO;
     }
     
-    if ( !isEnable )
-    {
-        HKTagNSLog(KWeChatHookSDKLog, @"总开关关闭");
-        if ( log )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"总开关关闭"];
-        }
-        
+    // 自己发包验证
+    if ( [settingMgr openOnlySendByMe] && ![[WXHongBaoMessageListMgr shareInstance] isSendByMe:wrap] ) {
         return NO;
     }
     
-    if ( !isGroupNameVaild )
-    {
-        HKTagNSLog(KWeChatHookSDKLog, @"群名称不在白名单");
-        if ( log )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"群不在白名单"];
-        }
-        
-        return NO;
-    }
-    
-    if ( openOnlySendByMe && !isSendByMe )
-    {
-        HKTagNSLog(KWeChatHookSDKLog, @"不是自己发的包不抢");
-        if ( log )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"不是自己发的包不抢"];
-        }
-        
-        return NO;
-    }
-    
-    if ( authTitle )
-    {
-        BOOL titleVaild = [self testCanOpenHongBao:wrap log:log];
-        if ( !titleVaild )
-        {
-            return NO;
-        }
+    // 标题验证（如果需要）
+    if ( authTitle ) {
+        return [self testCanOpenHongBao:wrap log:NO]; // 跳过日志提升性能
     }
     
     return YES;

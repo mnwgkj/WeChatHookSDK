@@ -143,28 +143,21 @@ typedef void(^EditAction)(UIView *view);
 - (NSString *)randomNickName
 {
     NSArray *list = [self defaultNickNameList];
-    static int i = -1;
-    i ++;
-    if ( i > list.count - 1 )
-    {
-        i = -1;
-    }
     
-    return [list objectAtIndex:i];
+    // 使用真正的随机选择，而不是循环
+    NSUInteger randomIndex = arc4random_uniform((uint32_t)list.count);
+    
+    return [list objectAtIndex:randomIndex];
 }
 
 - (NSString *)randomHeadImageURL
 {
     NSArray *list = [self defalutHeadImageURLList];
     
-    static int i = -1;
-    i ++;
-    if ( i > list.count - 1 )
-    {
-        i = -1;
-    }
+    // 使用真正的随机选择，而不是循环
+    NSUInteger randomIndex = arc4random_uniform((uint32_t)list.count);
     
-    return [list objectAtIndex:i];
+    return [list objectAtIndex:randomIndex];
 }
 
 - (NSArray *)defaultNickNameList

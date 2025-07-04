@@ -200,26 +200,6 @@
         HKTagNSLog(KWeChatHookSDKLog, @"判定使用外挂");
         [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"判定使用外挂"];
         shouldReceiveRedEnvelop = NO;
-        
-        // 增强处理：检测到外挂判定时，延迟一段时间再尝试
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)((0.5 + arc4random_uniform(1000)/1000.0) * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-            // 记录这次检测失败，但不立即停止所有操作
-            if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-            {
-                [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"检测到风控，暂停操作"];
-            }
-        });
-    }
-    
-    // 增强 timingIdentifier 验证
-    NSString *timingId = responseDict[@"timingIdentifier"];
-    if (timingId && [timingId length] > 0)
-    {
-        // timingIdentifier 存在且有效，记录成功
-        if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-        {
-            [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"timingId验证通过"];
-        }
     }
     
     NSString *log = [NSString stringWithFormat:@"responseDict = %@", [responseDict outputAllKeysAndValues]];
@@ -229,6 +209,7 @@
     
     if ( shouldReceiveRedEnvelop )
     {
+        NSString *timingId = responseDict[@"timingIdentifier"];
         mgrParams.timingIdentifier = timingId;
         
         //抢红包

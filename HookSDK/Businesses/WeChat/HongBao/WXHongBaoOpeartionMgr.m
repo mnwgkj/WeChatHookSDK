@@ -74,15 +74,7 @@
         return;
     }
     
-    // 使用优化后的随机延迟机制
     float openDelay = [[WXHongBaoSettingMgr shareInstance] openDelay];
-    
-    // 记录实际使用的延迟时间
-    if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
-    {
-        NSString *delayLog = [NSString stringWithFormat:@"延迟%.3f秒后抢包", openDelay];
-        [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:delayLog];
-    }
     
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(openDelay * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self openHongBaoByMessageWrap:wrap log:YES];

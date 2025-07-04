@@ -67,25 +67,31 @@
         return;
     }
     
-    HKTagNSLog(KWeChatHookSDKLog, @"查询领取详情");
+    // 极速模式 - 减少日志开销
     if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
     {
         [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"查询领取详情"];
     }
     
-    HKAsynTicktockTaskBlock taskBlock = ^(HKAsynTickoutTask *task){
-        
-        NSMutableDictionary *params = [NSMutableDictionary dictionary];
-        NSString *msgType = [NSString stringWithFormat:@"%d", task.repeatCount];
-        NSString *fixNativeURL = nil;
+    // 预分配参数字典，避免动态创建
+    static NSMutableDictionary *staticParams = nil;
+    if (!staticParams) {
+        staticParams = [[NSMutableDictionary alloc] initWithCapacity:4];
+    }
     
-        fixNativeURL = [NSString stringWithFormat:@"weixin://weixinhongbao/opendetail?sendid=%@", sendId];
+    // 预编译URL模板
+    static NSString *urlTemplate = @"weixin://weixinhongbao/opendetail?sendid=";
+    
+    HKAsynTicktockTaskBlock taskBlock = ^(HKAsynTickoutTask *task){
+        // 复用字典，清空后重新设置
+        [staticParams removeAllObjects];
         
-        [params setObject:msgType forKey:@"msgType"];
-        [params setObject:sendId forKey:@"sendId"];
-        [params setObject:fixNativeURL forKey:@"nativeUrl"];
+        // 避免stringWithFormat，直接使用字符串拼接
+        staticParams[@"msgType"] = @"1";  // 固定值，避免格式化
+        staticParams[@"sendId"] = sendId;
+        staticParams[@"nativeUrl"] = [urlTemplate stringByAppendingString:sendId];
         
-        [[WXHongBaoOpeartionMgr shareInstance] wxQueryRedEnvelopesDetailRequest:params];
+        [[WXHongBaoOpeartionMgr shareInstance] wxQueryRedEnvelopesDetailRequest:staticParams];
     };
     
     HKAsynTickoutTask* newTask = [[HKAsynTickoutTask alloc] init];
@@ -136,29 +142,19 @@
         return;
     }
     
-    NSString* log = [NSString stringWithFormat:@"自动查询红包状态 name = %@", name];
-    HKTagNSLog(KWeChatHookSDKLog, log);
+    // 极速模式 - 减少字符串格式化和日志
     if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
     {
         [[WXHongBaoIPCCmdMgr shareInstance] sendLogCmdWithFromApp:@"自动查询红包状态"];
     }
     
-    HKAsynTicktockTaskBlock taskBlock = ^(HKAsynTickoutTask *task){
-        //查询红包
-        NSString *fixNativeURL = [NSString stringWithFormat:@"weixin://weixinhongbao/opendetail?sendid=%@", sendId];
-        
-        NSMutableDictionary *params = [NSMutableDictionary dictionary];
-        [params setObject:@"1" forKey:@"msgType"];
-        [params setObject:sendId forKey:@"sendId"];
-        [params setObject:fixNativeURL forKey:@"nativeUrl"];
-        
-        [[WXHongBaoOpeartionMgr shareInstance] openHongBaoByNativeURL:nativeURL usingCacheTimingId:NO log:NO];
-    };
-    
     HKAsynTickoutTask* newTask = [[HKAsynTickoutTask alloc] init];
     newTask.name = name;
-    newTask.duration = 0;
-    newTask.taskBlock = taskBlock;
+    newTask.duration = 0; // 极速模式，无延迟
+    newTask.taskBlock = ^(HKAsynTickoutTask *task){
+        // 直接抢包，跳过额外的参数构建
+        [[WXHongBaoOpeartionMgr shareInstance] openHongBaoByNativeURL:nativeURL usingCacheTimingId:YES log:NO];
+    };
     newTask.userInfo = nativeURL;
     newTask.repeat = NO;
     
@@ -199,7 +195,9 @@
 - (NSString *)nameOfQueryState:(NSString *)nativeURL
 {
     NSString *sendId = [[WXHongBaoMessageListMgr shareInstance] sendIdFromNativeURL:nativeURL];
-    return [NSString stringWithFormat:@"querystate_%@", sendId];
+    // 极速优化：避免stringWithFormat，直接拼接
+    static NSString *prefix = @"querystate_";
+    return [prefix stringByAppendingString:sendId];
 }
 
 @end

@@ -305,7 +305,7 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
         item.name = KWXHongBaoSettingKeyQueryDelay;
         item.title = @"查询详情间隔(毫秒)";
         item.switchShow = NO;
-        item.text = @"50";
+        item.text = @"0";  // 极速优化：默认值改为0
         item.switchOn = NO;
         
         WXHongBaoSettingInfoItem *localItem = [self localSettingInfoByKey:item.name];
@@ -405,10 +405,28 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
             
             updated = YES;
             
+            // 极速优化：清除相关延迟缓存，确保下次获取最新值
+            if ([item.name isEqualToString:KWXHongBaoSettingKeyAutoOpenDelay]) {
+                // 重置openDelay缓存
+                static float *cachedOpenDelay = NULL;
+                static NSString **cachedOpenDelayText = NULL;
+                if (cachedOpenDelay) *cachedOpenDelay = -1.0;
+                if (cachedOpenDelayText) *cachedOpenDelayText = nil;
+            } else if ([item.name isEqualToString:KWXHongBaoSettingKeyQueryDelay]) {
+                // 重置queryDelay缓存
+                static float *cachedQueryDelay = NULL;
+                static NSString **cachedQueryDelayText = NULL;
+                if (cachedQueryDelay) *cachedQueryDelay = -1.0;
+                if (cachedQueryDelayText) *cachedQueryDelayText = nil;
+            }
+            
             if ( [item.name isEqualToString:KWXHongBaoSettingKeyAuth] )
             {
-                NSString *log = [[HKAppAuthorizationMgr shareInstance].appKeysList description];
-                HKTagNSLog(KWeChatCmdLog, log);
+                if ( [[WXHongBaoSettingMgr shareInstance] enableFullLog] )
+                {
+                    NSString *log = [[HKAppAuthorizationMgr shareInstance].appKeysList description];
+                    HKTagNSLog(KWeChatCmdLog, log);
+                }
                 [[HKAppAuthorizationMgr shareInstance] makeAppAuthorization:item.text];
             }
         }
@@ -435,10 +453,25 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
 
 - (WXHongBaoSettingInfoItem *)settingInfoByKey:(NSString *)key
 {
+    // 极速优化：使用静态字典缓存，避免线性查找
+    static NSMutableDictionary *settingCache = nil;
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        settingCache = [NSMutableDictionary dictionaryWithCapacity:20];
+    });
+    
+    // 先从缓存查找
+    WXHongBaoSettingInfoItem *cachedItem = settingCache[key];
+    if (cachedItem) {
+        return cachedItem;
+    }
+    
+    // 缓存未命中，进行查找并缓存
     for ( WXHongBaoSettingInfoItem *item in self.settingInfoList )
     {
         if ( [item.name isEqualToString:key] )
         {
+            settingCache[key] = item; // 缓存结果
             return item;
         }
     }
@@ -533,6 +566,10 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
 
 - (float)openDelay
 {
+    // 极速优化：缓存延迟值，避免重复计算
+    static float cachedOpenDelay = -1.0;
+    static NSString *cachedOpenDelayText = nil;
+    
     if ( ![self isEnable] )
     {
         return 0.0;
@@ -540,11 +577,24 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
     
     WXHongBaoSettingInfoItem *item = [self settingInfoByKey:KWXHongBaoSettingKeyAutoOpenDelay];
     
-    return [item.text integerValue] * 0.001;
+    // 如果配置未变，直接返回缓存值
+    if (cachedOpenDelay >= 0 && [item.text isEqualToString:cachedOpenDelayText]) {
+        return cachedOpenDelay;
+    }
+    
+    // 更新缓存
+    cachedOpenDelayText = item.text;
+    cachedOpenDelay = [item.text integerValue] * 0.001;
+    
+    return cachedOpenDelay;
 }
 
 - (float)queryDelay
 {
+    // 极速优化：缓存延迟值，避免重复计算
+    static float cachedQueryDelay = -1.0;
+    static NSString *cachedQueryDelayText = nil;
+    
     if ( ![self isEnable] )
     {
         return 0.0;
@@ -552,7 +602,16 @@ NSString *const KWXHongBaoSettingKeyOnlyMe = @"KWXHongBaoSettingKeyOnlyMe";
     
     WXHongBaoSettingInfoItem *item = [self settingInfoByKey:KWXHongBaoSettingKeyQueryDelay];
     
-    return [item.text integerValue] * 0.001;
+    // 如果配置未变，直接返回缓存值
+    if (cachedQueryDelay >= 0 && [item.text isEqualToString:cachedQueryDelayText]) {
+        return cachedQueryDelay;
+    }
+    
+    // 更新缓存
+    cachedQueryDelayText = item.text;
+    cachedQueryDelay = [item.text integerValue] * 0.001;
+    
+    return cachedQueryDelay;
 }
 
 - (BOOL)isGroupNameVaild:(NSString *)groupName

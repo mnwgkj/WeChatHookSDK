@@ -1,4 +1,4 @@
-//
+THIS SHOULD BE A LINTER ERROR//
 //  ViewController.m
 //  WXHookDemo
 //
@@ -128,9 +128,16 @@
     
     self.title = @"红包助手";
     self.view.backgroundColor = [UIColor whiteColor];
+    
+    // 极速优化：TableView性能优化
     self.tableView.dataSource = self;
     self.tableView.delegate = self;
     self.tableView.tableFooterView = [[UIView alloc] init];
+    self.tableView.estimatedRowHeight = WXHongBaoSettingCellTitleHeight; // 预估高度避免重复计算
+    self.tableView.rowHeight = WXHongBaoSettingCellTitleHeight; // 固定高度提升性能
+    self.tableView.separatorInset = UIEdgeInsetsZero; // 优化分隔线
+    
+    // 预缓存cell，避免运行时创建
     [self.tableView registerClass:[WXHongBaoSettingCell class] forCellReuseIdentifier:@"WXHongBaoSettingCell"];
     
     UIBarButtonItem * button = [[UIBarButtonItem alloc]initWithTitle:@"清除" style:UIBarButtonItemStyleDone target:self action:@selector(onClearDataButtonClick)];
@@ -138,7 +145,7 @@
     self.navigationItem.rightBarButtonItem = button;
     
     UIBarButtonItem * leftButton = [[UIBarButtonItem alloc]initWithTitle:@"关闭" style:UIBarButtonItemStyleDone target:self action:@selector(onCloseDataButtonClick:)];
-    button.tintColor = [UIColor whiteColor];
+    leftButton.tintColor = [UIColor whiteColor]; // 修复bug：应该是leftButton
     self.navigationItem.leftBarButtonItem = leftButton;
     
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(onWXHongBaoSettingMgrSettingUpdate) name:KWXHongBaoSettingUpdate object:nil];
@@ -187,12 +194,23 @@
 
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath
 {
+    // 极速优化：由于已设置固定高度，这个方法可能不会被调用，但保留以防万一
     return WXHongBaoSettingCellTitleHeight;
 }
 
 - (void)onWXHongBaoSettingMgrSettingUpdate
 {
-    [self.tableView reloadData];
+    // 极速优化：避免全表刷新，使用批量更新
+    if (@available(iOS 11.0, *)) {
+        [self.tableView performBatchUpdates:^{
+            [self.tableView reloadSections:[NSIndexSet indexSetWithIndex:0] withRowAnimation:UITableViewRowAnimationNone];
+        } completion:nil];
+    } else {
+        // iOS 11以下版本的优化刷新
+        [UIView performWithoutAnimation:^{
+            [self.tableView reloadData];
+        }];
+    }
 }
 
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath

@@ -1,4 +1,4 @@
-THIS SHOULD BE A LINTER ERROR//
+//
 //  ViewController.m
 //  WXHookDemo
 //
@@ -14,10 +14,21 @@ THIS SHOULD BE A LINTER ERROR//
 #import "UIApplication+TopViewController.h"
 #import "WXHongBaoSmartOpenConfigViewController.h"
 
+// 现代化UI设计常量
 #define WXHongBaoSettingCellSwitchWidth 50
 #define WXHongBaoSettingCellTextViewHeight 80
-#define WXHongBaoSettingCellItemSpace 10
+#define WXHongBaoSettingCellItemSpace 16
 #define WXHongBaoSettingCellSpace 20
+#define WXHongBaoSettingCellCornerRadius 12
+#define WXHongBaoSettingCellHeight 64
+
+// 现代化配色方案
+#define WXHongBaoMainColor [UIColor colorWithRed:236/255.0 green:64/255.0 blue:64/255.0 alpha:1.0]
+#define WXHongBaoSecondaryColor [UIColor colorWithRed:255/255.0 green:87/255.0 blue:87/255.0 alpha:1.0]
+#define WXHongBaoBackgroundColor [UIColor colorWithRed:248/255.0 green:249/255.0 blue:250/255.0 alpha:1.0]
+#define WXHongBaoCardColor [UIColor whiteColor]
+#define WXHongBaoTextColor [UIColor colorWithRed:28/255.0 green:28/255.0 blue:30/255.0 alpha:1.0]
+#define WXHongBaoSubtextColor [UIColor colorWithRed:142/255.0 green:142/255.0 blue:147/255.0 alpha:1.0]
 
 @implementation WXHongBaoSettingCell
 
@@ -49,20 +60,16 @@ THIS SHOULD BE A LINTER ERROR//
 {
     [super layoutSubviews];
     
+    // 极速优化：缓存计算结果，避免重复计算
+    static CGFloat switchWidth = WXHongBaoSettingCellSwitchWidth;
+    static CGFloat cellSpace = WXHongBaoSettingCellSpace;
+    static CGFloat titleHeight = WXHongBaoSettingCellTitleHeight;
     
-    CGRect frame;
+    CGFloat contentWidth = self.contentView.frame.size.width;
     
-    frame.origin.x = WXHongBaoSettingCellSpace;
-    frame.origin.y = 0;
-    frame.size.width = self.contentView.frame.size.width;
-    frame.size.height = WXHongBaoSettingCellTitleHeight;
-    self.titleContentLabel.frame = frame;
-    
-    frame.origin.x = self.contentView.frame.size.width - WXHongBaoSettingCellSwitchWidth - WXHongBaoSettingCellSpace;
-    frame.origin.y = 8;
-    frame.size.width = WXHongBaoSettingCellSwitchWidth;
-    frame.size.height = WXHongBaoSettingCellTitleHeight;
-    self.switchControl.frame = frame;
+    // 优化布局计算，减少frame操作
+    self.titleContentLabel.frame = CGRectMake(cellSpace, 0, contentWidth - switchWidth - 2*cellSpace, titleHeight);
+    self.switchControl.frame = CGRectMake(contentWidth - switchWidth - cellSpace, 8, switchWidth, titleHeight - 16);
 }
 
 - (void)setHighlighted:(BOOL)highlighted
